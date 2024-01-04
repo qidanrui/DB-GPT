@@ -26,8 +26,7 @@ from dbgpt.app.component_configs import initialize_components
 
 # fastapi import time cost about 0.05s
 from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, applications
-from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -46,18 +45,13 @@ static_file_path = os.path.join(ROOT_PATH, "dbgpt", "app/static")
 
 CFG = Config()
 
-
-def swagger_monkey_patch(*args, **kwargs):
-    return get_swagger_ui_html(
-        *args,
-        **kwargs,
-        swagger_js_url="https://cdn.bootcdn.net/ajax/libs/swagger-ui/4.10.3/swagger-ui-bundle.js",
-        swagger_css_url="https://cdn.bootcdn.net/ajax/libs/swagger-ui/4.10.3/swagger-ui.css",
-    )
-
-
-app = FastAPI()
-applications.get_swagger_ui_html = swagger_monkey_patch
+app = FastAPI(
+    title="DBGPT OPEN API",
+    description="This is dbgpt, with auto docs for the API and everything",
+    version="0.5.0",
+    openapi_tags=[],
+)
+# applications.get_swagger_ui_html = swagger_monkey_patch
 
 system_app = SystemApp(app)
 
@@ -94,7 +88,7 @@ def mount_routers(app: FastAPI):
 
 
 def mount_static_files(app: FastAPI):
-    from dbgpt.agent.commands.disply_type.show_chart_gen import (
+    from dbgpt.agent.plugin.commands.built_in.disply_type import (
         static_message_img_path,
     )
 
@@ -152,14 +146,13 @@ def initialize_app(param: WebServerParameters = None, args: List[str] = None):
     mount_routers(app)
     model_start_listener = _create_model_start_listener(system_app)
     initialize_components(param, system_app, embedding_model_name, embedding_model_path)
+    system_app.on_init()
 
-    # Before start, after initialize_components
-    # TODO: initialize_worker_manager_in_client as a component register in system_app
-    system_app.before_start()
     # Migration db storage, so you db models must be imported before this
     _migration_db_storage(param)
 
     model_path = CFG.LLM_MODEL_PATH or LLM_MODEL_CONFIG.get(model_name)
+    # TODO: initialize_worker_manager_in_client as a component register in system_app
     if not param.light:
         print("Model Unified Deployment Mode!")
         if not param.remote_embedding:
@@ -192,6 +185,9 @@ def initialize_app(param: WebServerParameters = None, args: List[str] = None):
         CFG.SERVER_LIGHT_MODE = True
 
     mount_static_files(app)
+
+    # Before start, after on_init
+    system_app.before_start()
     return param
 
 
